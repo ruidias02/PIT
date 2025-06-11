@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detalhes do Sensor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        /* Reset completo para o body */
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            overflow-x: hidden;
+        }
+
+        /* Navbar com largura completa e sem margens */
+        .navbar {
+            margin: 0;
+            padding-left: 0;
+            padding-right: 0;
+            width: 100%;
+        }
+
+        .navbar > .container {
+            max-width: 100%;
+            padding-left: 15px;
+            padding-right: 15px;
+        }
+
+        /* Conteúdo principal responsivo */
+        .main-content {
+            width: 100%;
+            max-width: 100%;
+            margin: 0 auto;
+            padding: 10px;
+            overflow-x: hidden;
+        }
+
+        /* Container para gráficos em linha */
+        .chart-row {
+            display: flex;
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            gap: 10px;
+            width: 100%;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+        }
+
+        .chart-item {
+            flex: 1;
+            min-width: 300px;
+            height: 250px;
+        }
+
+        /* Container responsivo para tabela */
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin-bottom: 20px;
+        }
+
+        /* Tabela responsiva */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        /* Ajustes para mobile */
+        @media (max-width: 767px) {
+            .chart-row {
+                flex-wrap: wrap;
+            }
+            
+            .chart-item {
+                min-width: 100%;
+                height: 200px;
+            }
+            
+            table {
+                font-size: 12px;
+            }
+
+            th, td {
+                padding: 6px;
+            }
+            
+            #sensor-title {
+                font-size: 1.5rem;
+            }
+        }
+
+        /* Ajustes para telas muito pequenas */
+        @media (max-width: 480px) {
+            table {
+                font-size: 11px;
+            }
+
+            th, td {
+                padding: 4px;
+            }
+            
+            #sensor-title {
+                font-size: 1.2rem;
+            }
+        }
+        
+        /* Personalização das tabelas para caber em telas pequenas */
+        .compact-table th, .compact-table td {
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">Sistema de deteção de incêndio</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('display_home_page') }}">Página inicial</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('display_index') }}">Consulta de dados</a>
+                    </li>
+                    {% if session.get('permissao') == 'admin' %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Admin</a>
+                    </li>
+                    {% endif %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <h1 id="sensor-title" class="text-center my-3">Detalhes do sistema sensor ID: {{ sensor_id }}</h1>
+
+        <div class="chart-row" id="charts-container">
+            <!-- Gráficos serão inseridos aqui pelo JavaScript -->
+        </div>
+
+        <div class="table-responsive">
+            <table id="sensor-data-table" class="compact-table">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Temp (°C)</th>
+                        <th>Hum (%)</th>
+                        <th>CO₂ (ppm)</th>
+                        <th>Lum (lux)</th>
+                        <th>Risco</th>
+                    </tr>
+                </thead>
+                <tbody id="sensor-data-body">
+                    <!-- Dados serão inseridos aqui pelo JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function calculateRisk(temperature, humidity, co2, lum) {
+            const tempContribution = temperature * 0.55;
+            const humidityContribution = humidity * -0.35;
+            const co2Contribution = co2 * 0.05;
+            const lumContribution = lum * 0.05;
+
+            let risk = tempContribution + humidityContribution + co2Contribution + lumContribution;
+            risk = Math.max(0, Math.min(risk, 100));
+
+            return risk;
+        }
+
+        // Referências dos gráficos
+        let charts = {}; 
+        
+        // Verifica se estamos em um dispositivo móvel
+        function isMobile() {
+            return window.innerWidth <= 767;
+        }
+        
+        // Formato de timestamp mais compacto para mobile
+        function formatTimestamp(timestamp) {
+            if (isMobile()) {
+                // Versão compacta para mobile
+                const date = new Date(timestamp);
+                return `${date.getDate()}/${date.getMonth()+1} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+            }
+            return timestamp; // Versão completa para desktop
+        }
+
+        async function fetchSensorData() {
+            const sensorId = "{{ sensor_id }}";
+            const response = await fetch(`/sensor-data/${sensorId}`);
+            const data = await response.json();
+
+            // Obter apenas os últimos 20 registros
+            const recentData = data.slice(-20);
+
+            const chartsContainer = document.getElementById('charts-container');
+            const dataBody = document.getElementById('sensor-data-body');
+
+            const metrics = [
+                { key: 'temperature', label: 'Temperatura (°C)', color: 'rgba(255, 99, 132, 1)' },
+                { key: 'humidity', label: 'Humidade (%)', color: 'rgba(54, 162, 235, 1)' },
+                { key: 'CO2', label: 'CO₂ (ppm)', color: 'rgba(0, 255, 0, 1)' },
+                { key: 'Lum', label: 'Luminosidade (lux)', color: 'rgba(255, 206, 86, 1)' }
+            ];
+
+            // Criar gráficos apenas na primeira vez
+            if (Object.keys(charts).length === 0) {
+                chartsContainer.innerHTML = ''; // Limpar container antes de adicionar
+                
+                metrics.forEach(metric => {
+                    const chartContainer = document.createElement('div');
+                    chartContainer.classList.add('chart-item');
+
+                    const canvas = document.createElement('canvas');
+                    canvas.id = `chart-${metric.key}`;
+                    chartContainer.appendChild(canvas);
+                    chartsContainer.appendChild(chartContainer);
+
+                    const ctx = canvas.getContext('2d');
+                    charts[metric.key] = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: [],
+                            datasets: [{
+                                label: metric.label,
+                                data: [],
+                                borderColor: metric.color,
+                                backgroundColor: metric.color.replace('1)', '0.2)'),
+                                borderWidth: 2,
+                                tension: 0.1,
+                                fill: false
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                }
+                            },
+                            scales: {
+                                y: { 
+                                    beginAtZero: false,
+                                    grid: {
+                                        display: true,
+                                        color: 'rgba(0, 0, 0, 0.1)'
+                                    }
+                                },
+                                x: {
+                                    grid: {
+                                        display: false
+                                    },
+                                    ticks: {
+                                        maxRotation: 45,
+                                        minRotation: 45,
+                                        autoSkip: true,
+                                        maxTicksLimit: isMobile() ? 5 : 8
+                                    }
+                                }
+                            }
+                        }
+                    });
+                });
+            }
+
+            // Atualizar dados dos gráficos apenas com dados recentes
+            metrics.forEach(metric => {
+                const chart = charts[metric.key];
+                chart.data.labels = recentData.map(row => formatTimestamp(row.timestamp));
+                chart.data.datasets[0].data = recentData.map(row => row[metric.key]);
+                chart.update();
+            });
+
+            // Limpar tabela anterior
+            dataBody.innerHTML = '';
+
+            // Preencher tabela apenas com dados recentes
+            recentData.forEach(row => {
+                const risk = calculateRisk(row.temperature, row.humidity, row.CO2, row.Lum);
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${formatTimestamp(row.timestamp)}</td>
+                    <td>${row.temperature.toFixed(2)}</td>
+                    <td>${row.humidity.toFixed(2)}</td>
+                    <td>${row.CO2.toFixed(2)}</td>
+                    <td>${row.Lum.toFixed(2)}</td>
+                    <td>${risk.toFixed(2)}</td>
+                `;
+                dataBody.appendChild(tr);
+            });
+
+            // Adicionar linha de média ao final da tabela
+            if (recentData.length > 0) {
+                const avgTr = document.createElement('tr');
+                avgTr.style.fontWeight = 'bold';
+                avgTr.style.backgroundColor = '#f0f0f0';
+
+                const avgTemperature = recentData.reduce((sum, row) => sum + row.temperature, 0) / recentData.length;
+                const avgHumidity = recentData.reduce((sum, row) => sum + row.humidity, 0) / recentData.length;
+                const avgCO2 = recentData.reduce((sum, row) => sum + row.CO2, 0) / recentData.length;
+                const avgLum = recentData.reduce((sum, row) => sum + row.Lum, 0) / recentData.length;
+                const avgRisk = recentData.reduce((sum, row) =>
+                    sum + calculateRisk(row.temperature, row.humidity, row.CO2, row.Lum), 0) / recentData.length;
+
+                avgTr.innerHTML = `
+                    <td>Média</td>
+                    <td>${avgTemperature.toFixed(2)}</td>
+                    <td>${avgHumidity.toFixed(2)}</td>
+                    <td>${avgCO2.toFixed(2)}</td>
+                    <td>${avgLum.toFixed(2)}</td>
+                    <td>${avgRisk.toFixed(2)}</td>
+                `;
+                dataBody.appendChild(avgTr);
+            }
+        }
+        
+        // Buscar dados quando a página carregar
+        async function startDataPolling() {
+            await fetchSensorData();
+            setTimeout(startDataPolling, 1000);
+        }
+
+        // Responder a mudanças no tamanho da tela
+        window.addEventListener('resize', function() {
+            // Atualizar gráficos quando o tamanho da tela mudar
+            for (let key in charts) {
+                charts[key].options.scales.x.ticks.maxTicksLimit = isMobile() ? 5 : 8;
+                charts[key].update();
+            }
+            // Recarregar dados para atualizar formato dos timestamps
+            fetchSensorData();
+        });
+
+        // Iniciar a atualização de dados
+        startDataPolling();
+    </script>
+</body>
+</html>

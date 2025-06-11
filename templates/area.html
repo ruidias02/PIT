@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>áreas</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
+    <style>
+        .profile-container {
+            max-width: 100%;
+            margin: 10px auto;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        @media (min-width: 768px) {
+            .profile-container {
+                max-width: 800px;
+                margin: 20px auto;
+                padding: 20px;
+            }
+        }
+        
+        .image-container {
+            position: relative;
+            margin-bottom: 20px;
+            overflow: hidden;
+            max-width: 100%;
+            /* Contêiner com altura fixa para dispositivos móveis */
+            height: auto;
+            min-height: 250px;
+        }
+        
+        @media (min-width: 768px) {
+            .image-container {
+                min-height: 400px;
+            }
+        }
+        
+        .image-preview {
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+            margin: 0 auto;
+            object-fit: contain;
+        }
+        
+        .selection-area {
+            position: absolute;
+            border: 2px dashed #FF5733;
+            background-color: rgba(255, 87, 51, 0.3);
+            cursor: move;
+            z-index: 10;
+        }
+        
+        .drawing-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+        
+        .area-panel {
+            margin-top: 20px;
+        }
+        
+        .area-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .area-item {
+            display: flex;
+            flex-direction: column;
+            padding: 8px;
+            margin-bottom: 5px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        
+        @media (min-width: 576px) {
+            .area-item {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+            }
+        }
+        
+        .area-item:hover {
+            background-color: #e9ecef;
+        }
+        
+        .area-item-buttons {
+            display: flex;
+            margin-top: 8px;
+            gap: 5px;
+        }
+        
+        @media (min-width: 576px) {
+            .area-item-buttons {
+                margin-top: 0;
+            }
+        }
+        
+        .navbar {
+            margin-bottom: 15px;
+        }
+        
+        @media (min-width: 768px) {
+            .navbar {
+                margin-bottom: 30px;
+            }
+        }
+        
+        .sensor-status {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        .sensor-running {
+            background-color: #28a745;
+        }
+        
+        .sensor-stopped {
+            background-color: #dc3545;
+        }
+        
+        .sensor-none {
+            background-color: #6c757d;
+        }
+        
+        .sensor-marker {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: #007bff;
+            border-radius: 50%;
+            border: 2px solid white;
+            cursor: move;
+            z-index: 20;
+        }
+        
+        .sensor-marker::after {
+            content: '';
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background-color: white;
+            border-radius: 50%;
+            top: 4px;
+            left: 4px;
+        }
+        
+        .sensor-selected {
+            box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.5);
+        }
+        
+        .heatmap-buttons {
+            margin-top: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+        
+        .action-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        
+        .action-buttons .btn {
+            margin-bottom: 5px;
+        }
+        
+        /* Ajustes para formulários em telas pequenas */
+        @media (max-width: 576px) {
+            .upload-form .form-control,
+            .upload-form .btn,
+            #areaForm .form-control,
+            #areaForm .form-select,
+            #areaForm .btn {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+        }
+        
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Sistema de deteção de incêndio</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('display_home_page') }}">Página inicial</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="profile-container">
+            <h2 class="mb-4">Bem-vindo(a), {{ user_name }}</h2>
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>A sua planta</h5>
+                </div>
+                <div class="card-body">
+                    {% if not image_path %}
+                        <div class="alert alert-info">
+                            Você ainda não carregou nenhuma imagem.
+                        </div>
+                        
+                        <form action="{{ url_for('area') }}" method="post" enctype="multipart/form-data" class="upload-form">
+                            <div class="mb-3">
+                                <label for="image" class="form-label">Selecione uma imagem:</label>
+                                <input type="file" class="form-control" id="image" name="image" accept="image/*" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Enviar Imagem</button>
+                        </form>
+                    {% else %}
+                        <div class="row">
+                            <div class="col-lg-8 col-md-12">
+                                <div class="image-container" id="imageContainer">
+                                    <img src="{{ image_path }}" alt="Imagem do Usuário" class="image-preview" id="userImage">
+                                    <div class="drawing-area" id="drawingArea"></div>
+                                </div>
+                                
+                                <div class="action-buttons">
+                                    <button type="button" class="btn btn-warning" id="resetSelection">Cancelar seleção</button>
+                                    <button type="button" class="btn btn-success" id="showAreaForm">Guardar área</button>
+                                </div>
+                                
+                                <!-- Botões de Mapa de Calor Globais -->
+                                {% if areas %}
+                                <div class="heatmap-buttons">
+                                    <a href="{{ url_for('area_risk_heatmap', type='risk', area_id=areas[0].id) }}" class="btn btn-warning">Mapa de calor - Risco</a>
+                                    <a href="{{ url_for('area_temperature_heatmap', type='temperature', area_id=areas[0].id) }}" class="btn btn-danger">Mapa de calor - Temperatura</a>
+                                    <a href="{{ url_for('area_co2_heatmap', type='co2', area_id=areas[0].id) }}" class="btn btn-danger">Mapa de calor - CO2</a>
+                                    <a href="{{ url_for('area_humidity_heatmap', type='humidity', area_id=areas[0].id) }}" class="btn btn-warning">Mapa de calor - Humidade</a>
+                                </div>
+                                {% endif %}
+                                
+                                <div class="mt-3 d-none" id="areaForm">
+                                    <form action="{{ url_for('area') }}" method="post">
+                                        <input type="hidden" name="save_area" value="1">
+                                        <input type="hidden" name="area_id" id="areaId" value="">
+                                        <input type="hidden" name="x" id="areaX">
+                                        <input type="hidden" name="y" id="areaY">
+                                        <input type="hidden" name="width" id="areaWidth">
+                                        <input type="hidden" name="height" id="areaHeight">
+                                        <input type="hidden" name="sensor_x" id="sensorX">
+                                        <input type="hidden" name="sensor_y" id="sensorY">
+                                        
+                                        <div class="mb-3">
+                                            <label for="description" class="form-label">Descrição da Área:</label>
+                                            <input type="text" class="form-control" id="description" name="description" required>
+                                        </div>
+                                        
+                                        <div class="mb-3">
+                                            <label for="sensor_id" class="form-label">Associar Sensor:</label>
+                                            <select class="form-select" id="sensor_id" name="sensor_id">
+                                                <option value="">Selecione um sensor (opcional)</option>
+                                                {% for sensor in available_sensors %}
+                                                <option value="{{ sensor.id }}">
+                                                    Sensor #{{ sensor.id }} - 
+                                                    {% if sensor.status == 'running' %}
+                                                        Ligado
+                                                    {% else %}
+                                                        Desligado
+                                                    {% endif %}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                            <small class="form-text text-muted">Associe um sensor a esta área.</small>
+                                        </div>
+                                        
+                                        <div class="alert alert-info d-none" id="sensorPositionInfo">
+                                            Clique na área para posicionar o sensor. Arraste para ajustar a posição.
+                                        </div>
+                                        
+                                        <div class="d-flex flex-wrap gap-2">
+                                            <button type="submit" id="confirmBtn" class="btn btn-primary">Confirmar</button>
+                                            <button type="button" class="btn btn-secondary" id="cancelAreaForm">Cancelar</button>
+                                        </div>
+                                    </form>
+                                </div>
+                                
+                                <div class="mt-3">
+                                    <form action="{{ url_for('area') }}" method="post" enctype="multipart/form-data">
+                                        <div class="mb-3">
+                                            <label for="image" class="form-label">Trocar imagem:</label>
+                                            <input type="file" class="form-control" id="image" name="image" accept="image/*" required>
+                                        </div>
+                                        <button type="submit" class="btn btn-outline-primary">Enviar nova imagem</button>
+                                        <small class="form-text text-muted d-block mt-2">Atenção: Trocar a imagem removerá todas as áreas guardadas!</small>
+                                    </form>
+                                </div>
+                            </div>
+                            
+                            <div class="col-lg-4 col-md-12 mt-4 mt-lg-0">
+                                <div class="area-panel">
+                                    <h5>Áreas selecionadas</h5>
+                                    {% if areas %}
+                                        <div class="area-list">
+                                            {% for area in areas %}
+                                                <div class="area-item">
+                                                    <div>
+                                                        <strong>{{ area.description }}</strong>
+                                                        {% if area.sensor_id is not none %}
+                                                        <small class="d-block">
+                                                            <span class="sensor-status {% if area.sensor_status == 'running' %}sensor-running{% elif area.sensor_status == 'stopped' %}sensor-stopped{% else %}sensor-none{% endif %}"></span>
+                                                            Sensor #{{ area.sensor_id }} - 
+                                                            {% if area.sensor_status == 'running' %}
+                                                                Ligado
+                                                            {% elif area.sensor_status == 'stopped' %}
+                                                                Desligado
+                                                            {% else %}
+                                                                Desconhecido
+                                                            {% endif %}
+                                                        </small>
+                                                    {% else %}
+                                                        <small class="d-block text-muted">
+                                                            <span class="sensor-status sensor-none"></span>
+                                                            Sem sensor associado
+                                                        </small>
+                                                    {% endif %}
+                                                    </div>
+                                                    <div class="area-item-buttons">
+                                                        <button type="button" class="btn btn-sm btn-info show-area" 
+                                                                data-x="{{ area.x }}" data-y="{{ area.y }}" 
+                                                                data-width="{{ area.width }}" data-height="{{ area.height }}"
+                                                                data-sensor-x="{{ area.sensor_x }}" data-sensor-y="{{ area.sensor_y }}">
+                                                            Ver
+                                                        </button>
+                                                        
+                                                        <form action="{{ url_for('area') }}" method="post" class="d-inline">
+                                                            <input type="hidden" name="delete_area" value="1">
+                                                            <input type="hidden" name="area_id" value="{{ area.id }}">
+                                                            <button type="submit" class="btn btn-sm btn-danger">Apagar</button>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <div class="alert alert-info">
+                                            Ainda não há áreas selecionadas.
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    {% if image_path %}
+    <script>
+document.addEventListener('DOMContentLoaded', function() {
+    const imageContainer = document.getElementById('imageContainer');
+    const userImage = document.getElementById('userImage');
+    const drawingArea = document.getElementById('drawingArea');
+    const resetSelectionBtn = document.getElementById('resetSelection');
+    const showAreaFormBtn = document.getElementById('showAreaForm');
+    const areaForm = document.getElementById('areaForm');
+    const cancelAreaFormBtn = document.getElementById('cancelAreaForm');
+    const sensorPositionInfo = document.getElementById('sensorPositionInfo');
+    
+    // Form fields
+    const areaX = document.getElementById('areaX');
+    const areaY = document.getElementById('areaY');
+    const areaWidth = document.getElementById('areaWidth');
+    const areaHeight = document.getElementById('areaHeight');
+    const sensorX = document.getElementById('sensorX');
+    const sensorY = document.getElementById('sensorY');
+    const sensorIdSelect = document.getElementById('sensor_id');
+    
+    // Selection variables
+    let isDrawing = false;
+    let startX, startY;
+    let currentSelection = null;
+    let currentSensorMarker = null;
+    let isPlacingSensor = false;
+    let imageNaturalWidth, imageNaturalHeight;
+    let imgWidth, imgHeight;
+    let isMobile = window.innerWidth < 768;
+    
+    // Armazena as dimensões originais da imagem quando ela é carregada
+    userImage.onload = function() {
+        // Guarda as dimensões naturais da imagem
+        imageNaturalWidth = userImage.naturalWidth;
+        imageNaturalHeight = userImage.naturalHeight;
+        
+        // Dimensões atuais na tela
+        imgWidth = userImage.width;
+        imgHeight = userImage.height;
+        
+        drawingArea.style.width = imgWidth + 'px';
+        drawingArea.style.height = imgHeight + 'px';
+        
+        // Ajusta quaisquer áreas já existentes
+        updateExistingAreas();
+    };
+    
+    // Se a imagem já estiver carregada quando o script for executado
+    if (userImage.complete) {
+        imageNaturalWidth = userImage.naturalWidth;
+        imageNaturalHeight = userImage.naturalHeight;
+        imgWidth = userImage.width;
+        imgHeight = userImage.height;
+        drawingArea.style.width = imgWidth + 'px';
+        drawingArea.style.height = imgHeight + 'px';
+    }
+    
+    // Atualiza flag de dispositivo móvel e dimensões quando a janela for redimensionada
+    window.addEventListener('resize', function() {
+        isMobile = window.innerWidth < 768;
+        
+        // Aguarda um momento para o redimensionamento estabilizar
+        setTimeout(function() {
+            // Atualiza as dimensões atuais
+            imgWidth = userImage.width;
+            imgHeight = userImage.height;
+            
+            drawingArea.style.width = imgWidth + 'px';
+            drawingArea.style.height = imgHeight + 'px';
+            
+            // Atualiza a posição e tamanho das áreas existentes
+            updateExistingAreas();
+        }, 100);
+    });
+    
+    // Função para converter coordenadas relativas para absolutas
+    function relativeToAbsolute(relX, relY, relWidth, relHeight) {
+        const absX = (relX * imgWidth);
+        const absY = (relY * imgHeight);
+        const absWidth = (relWidth * imgWidth);
+        const absHeight = (relHeight * imgHeight);
+        
+        return {
+            x: absX,
+            y: absY,
+            width: absWidth,
+            height: absHeight
+        };
+    }
+    
+    // Função para converter coordenadas absolutas para relativas
+    function absoluteToRelative(absX, absY, absWidth, absHeight) {
+        const relX = absX / imgWidth;
+        const relY = absY / imgHeight;
+        const relWidth = absWidth / imgWidth;
+        const relHeight = absHeight / imgHeight;
+        
+        return {
+            x: relX,
+            y: relY,
+            width: relWidth,
+            height: relHeight
+        };
+    }
+    
+    // Atualiza a posição e tamanho das áreas existentes na tela
+    function updateExistingAreas() {
+        // Atualiza a seleção atual, se houver
+        if (currentSelection) {
+            // Obtém as coordenadas relativas dos dados armazenados
+            const relX = parseFloat(areaX.value);
+            const relY = parseFloat(areaY.value);
+            const relWidth = parseFloat(areaWidth.value);
+            const relHeight = parseFloat(areaHeight.value);
+            
+            // Converte para coordenadas absolutas atuais
+            const abs = relativeToAbsolute(relX, relY, relWidth, relHeight);
+            
+            // Atualiza a visualização da seleção
+            currentSelection.style.left = abs.x + 'px';
+            currentSelection.style.top = abs.y + 'px';
+            currentSelection.style.width = abs.width + 'px';
+            currentSelection.style.height = abs.height + 'px';
+        }
+        
+        // Atualiza a posição do sensor, se houver
+        if (currentSensorMarker && sensorX.value && sensorY.value) {
+            const relSensorX = parseFloat(sensorX.value);
+            const relSensorY = parseFloat(sensorY.value);
+            
+            // Converte para coordenadas absolutas atuais
+            const absSensorX = relSensorX * imgWidth;
+            const absSensorY = relSensorY * imgHeight;
+            
+            // Ajusta a posição considerando o tamanho do marcador (10px de cada lado)
+            currentSensorMarker.style.left = (absSensorX - 10) + 'px';
+            currentSensorMarker.style.top = (absSensorY - 10) + 'px';
+        }
+    }
+    
+    // Helper para obter coordenadas relativas à área de desenho
+    function getRelativeCoordinates(event) {
+        const rect = drawingArea.getBoundingClientRect();
+        
+        // Para eventos de toque, use a primeira coordenada de toque
+        let clientX, clientY;
+        
+        if (event.type.startsWith('touch')) {
+            clientX = event.touches[0].clientX;
+            clientY = event.touches[0].clientY;
+        } else {
+            clientX = event.clientX;
+            clientY = event.clientY;
+        }
+        
+        // Calcula coordenadas absolutas dentro da área de desenho
+        const absX = Math.max(0, Math.min(clientX - rect.left, imgWidth));
+        const absY = Math.max(0, Math.min(clientY - rect.top, imgHeight));
+        
+        return {
+            x: absX,
+            y: absY
+        };
+    }
+    
+    // Função para iniciar a seleção da área
+    function startDrawing(e) {
+        // Prevent default browser behavior
+        e.preventDefault();
+        
+        if (isPlacingSensor) {
+            placeSensorMarker(e);
+            return;
+        }
+        
+        // Get coordinates relative to the image container
+        const coords = getRelativeCoordinates(e);
+        startX = coords.x;
+        startY = coords.y;
+        
+        // Remove any previous selection
+        removeCurrentSelection();
+        
+        // Create new selection element
+        currentSelection = document.createElement('div');
+        currentSelection.className = 'selection-area';
+        currentSelection.style.left = startX + 'px';
+        currentSelection.style.top = startY + 'px';
+        currentSelection.style.width = '0px';
+        currentSelection.style.height = '0px';
+        imageContainer.appendChild(currentSelection);
+        
+        isDrawing = true;
+        
+        // Hide the area form
+        areaForm.classList.add('d-none');
+    }
+    
+    // Função para atualizar o tamanho da seleção durante o arraste
+    function updateDrawing(e) {
+        if (!isDrawing || !currentSelection) return;
+        
+        const coords = getRelativeCoordinates(e);
+        const currentX = coords.x;
+        const currentY = coords.y;
+        
+        // Calculate dimensions
+        const width = Math.abs(currentX - startX);
+        const height = Math.abs(currentY - startY);
+        
+        // Calculate top-left position (if dragging in reverse direction)
+        const left = Math.min(startX, currentX);
+        const top = Math.min(startY, currentY);
+        
+        // Update selection style
+        currentSelection.style.width = width + 'px';
+        currentSelection.style.height = height + 'px';
+        currentSelection.style.left = left + 'px';
+        currentSelection.style.top = top + 'px';
+    }
+    
+    // Função para finalizar a seleção da área
+    function endDrawing(e) {
+        if (!isDrawing) return;
+        
+        isDrawing = false;
+        
+        // Only keep valid selections (with width and height > 10px)
+        if (currentSelection) {
+            const width = parseFloat(currentSelection.style.width);
+            const height = parseFloat(currentSelection.style.height);
+            
+            if (width < 10 || height < 10) {
+                removeCurrentSelection();
+                alert('A seleção é muito pequena. Por favor, selecione uma área maior.');
+            }
+        }
+    }
+    
+    // Add mouse and touch event listeners
+    drawingArea.addEventListener('mousedown', startDrawing);
+    drawingArea.addEventListener('touchstart', startDrawing);
+    
+    document.addEventListener('mousemove', updateDrawing);
+    document.addEventListener('touchmove', updateDrawing);
+    
+    document.addEventListener('mouseup', endDrawing);
+    document.addEventListener('touchend', endDrawing);
+    
+    // Reset selection button
+    resetSelectionBtn.addEventListener('click', function() {
+        removeCurrentSelection();
+        removeSensorMarker();
+        areaForm.classList.add('d-none');
+        isPlacingSensor = false;
+        sensorPositionInfo.classList.add('d-none');
+    });
+    
+    // Show form to save area
+    showAreaFormBtn.addEventListener('click', function() {
+        if (!currentSelection) {
+            alert('Por favor, selecione uma área primeiro.');
+            return;
+        }
+        
+        // Get the selection coordinates in absolute pixels
+        const left = parseFloat(currentSelection.style.left);
+        const top = parseFloat(currentSelection.style.top);
+        const width = parseFloat(currentSelection.style.width);
+        const height = parseFloat(currentSelection.style.height);
+        
+        // Convert to relative coordinates
+        const rel = absoluteToRelative(left, top, width, height);
+        
+        // Fill the form fields with relative values
+        areaX.value = rel.x;
+        areaY.value = rel.y;
+        areaWidth.value = rel.width;
+        areaHeight.value = rel.height;
+        
+        // Clear any previous sensor position
+        sensorX.value = '';
+        sensorY.value = '';
+        removeSensorMarker();
+        
+        // Show the form
+        areaForm.classList.remove('d-none');
+        
+        // Em dispositivos móveis, role até o formulário
+        if (isMobile) {
+            areaForm.scrollIntoView({ behavior: 'smooth' });
+        }
+    });
+    
+    // Listen for sensor selection changes
+    sensorIdSelect.addEventListener('change', function() {
+        if (this.value) {
+            // If a sensor is selected, enable positioning
+            isPlacingSensor = true;
+            sensorPositionInfo.classList.remove('d-none');
+            
+            // Não remova o sensor existente se já houver um posicionado
+            if (!currentSensorMarker) {
+                // Se não houver marcador ainda e houver coordenadas no formulário, recrie o marcador
+                if (sensorX.value && sensorY.value) {
+                    const relSensorX = parseFloat(sensorX.value);
+                    const relSensorY = parseFloat(sensorY.value);
+                    
+                    // Converte para coordenadas absolutas
+                    const absSensorX = relSensorX * imgWidth;
+                    const absSensorY = relSensorY * imgHeight;
+                    
+                    currentSensorMarker = document.createElement('div');
+                    currentSensorMarker.className = 'sensor-marker';
+                    currentSensorMarker.style.left = (absSensorX - 10) + 'px';
+                    currentSensorMarker.style.top = (absSensorY - 10) + 'px';
+                    imageContainer.appendChild(currentSensorMarker);
+                    
+                    // Make it draggable
+                    makeSensorDraggable(currentSensorMarker);
+                }
+            }
+        } else {
+            // If no sensor selected, disable positioning
+            isPlacingSensor = false;
+            sensorPositionInfo.classList.add('d-none');
+            removeSensorMarker();
+        }
+    });
+    
+    // Cancel form button
+    cancelAreaFormBtn.addEventListener('click', function() {
+        areaForm.classList.add('d-none');
+        isPlacingSensor = false;
+        sensorPositionInfo.classList.add('d-none');
+        removeSensorMarker();
+    });
+    
+    // Function to place sensor marker
+    function placeSensorMarker(e) {
+        if (!isPlacingSensor) return;
+        
+        const coords = getRelativeCoordinates(e);
+        const x = coords.x;
+        const y = coords.y;
+        
+        // Remove previous marker if exists
+        removeSensorMarker();
+        
+        // Create new sensor marker
+        currentSensorMarker = document.createElement('div');
+        currentSensorMarker.className = 'sensor-marker';
+        currentSensorMarker.style.left = (x - 10) + 'px';  // Adjust for marker center
+        currentSensorMarker.style.top = (y - 10) + 'px';   // Adjust for marker center
+        imageContainer.appendChild(currentSensorMarker);
+        
+        // Store the relative position in the form
+        sensorX.value = x / imgWidth;
+        sensorY.value = y / imgHeight;
+        
+        // Make the marker draggable
+        makeSensorDraggable(currentSensorMarker);
+    }
+    
+    // Function to make sensor marker draggable for both mouse and touch events
+    function makeSensorDraggable(element) {
+        let isDragging = false;
+        let offsetX, offsetY;
+        
+        // Mouse events
+        element.addEventListener('mousedown', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            isDragging = true;
+            
+            // Get the current position of the marker
+            const rect = element.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+            
+            element.classList.add('sensor-selected');
+        });
+        
+        // Touch events
+        element.addEventListener('touchstart', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            isDragging = true;
+            
+            // Get the current position of the marker
+            const rect = element.getBoundingClientRect();
+            offsetX = e.touches[0].clientX - rect.left;
+            offsetY = e.touches[0].clientY - rect.top;
+            
+            element.classList.add('sensor-selected');
+        });
+        
+        // Mouse move handler
+        function moveMarker(e) {
+            if (!isDragging) return;
+            
+            e.preventDefault(); // Prevenir comportamento padrão durante o arraste
+            
+            let clientX, clientY;
+            if (e.type.startsWith('touch')) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            
+            // Get image container position
+            const imgRect = imageContainer.getBoundingClientRect();
+            
+            // Calculate relative position within image container
+            let newX = clientX - imgRect.left - offsetX;
+            let newY = clientY - imgRect.top - offsetY;
+            
+            // Constrain marker within image boundaries
+            newX = Math.max(0, Math.min(newX, imgWidth - 20));
+            newY = Math.max(0, Math.min(newY, imgHeight - 20));
+            
+            // Update marker position
+            element.style.left = newX + 'px';
+            element.style.top = newY + 'px';
+            
+            // Update form fields with relative coordinates (adjust for marker center)
+            sensorX.value = (newX + 10) / imgWidth;
+            sensorY.value = (newY + 10) / imgHeight;
+        }
+        
+        // End drag handler
+        function endDrag(e) {
+            if (!isDragging) return;
+            
+            isDragging = false;
+            element.classList.remove('sensor-selected');
+        }
+        
+        // Add mouse and touch move handlers
+        document.addEventListener('mousemove', moveMarker);
+        document.addEventListener('touchmove', moveMarker, { passive: false });
+        
+        // Add mouse and touch end handlers
+        document.addEventListener('mouseup', endDrag);
+        document.addEventListener('touchend', endDrag);
+    }
+    
+    // Function to remove current selection
+    function removeCurrentSelection() {
+        if (currentSelection && currentSelection.parentNode) {
+            currentSelection.parentNode.removeChild(currentSelection);
+        }
+        currentSelection = null;
+    }
+    
+    // Function to remove sensor marker
+    function removeSensorMarker() {
+        if (currentSensorMarker && currentSensorMarker.parentNode) {
+            currentSensorMarker.parentNode.removeChild(currentSensorMarker);
+        }
+        currentSensorMarker = null;
+        sensorX.value = '';
+        sensorY.value = '';
+    }
+    
+    // Show saved areas when "Ver" button is clicked
+    document.querySelectorAll('.show-area').forEach(button => {
+        button.addEventListener('click', function() {
+            // Remove any existing selection and sensor marker
+            removeCurrentSelection();
+            removeSensorMarker();
+            
+            // Get area coordinates from data attributes (relative values)
+            const relX = parseFloat(this.dataset.x);
+            const relY = parseFloat(this.dataset.y);
+            const relWidth = parseFloat(this.dataset.width);
+            const relHeight = parseFloat(this.dataset.height);
+            
+            // Convert to absolute coordinates for display
+            const abs = relativeToAbsolute(relX, relY, relWidth, relHeight);
+            
+            // Create and show the area
+            currentSelection = document.createElement('div');
+            currentSelection.className = 'selection-area';
+            currentSelection.style.left = abs.x + 'px';
+            currentSelection.style.top = abs.y + 'px';
+            currentSelection.style.width = abs.width + 'px';
+            currentSelection.style.height = abs.height + 'px';
+            imageContainer.appendChild(currentSelection);
+            
+            // If there's sensor data, show the marker
+            const relSensorX = this.dataset.sensorX ? parseFloat(this.dataset.sensorX) : 0;
+            const relSensorY = this.dataset.sensorY ? parseFloat(this.dataset.sensorY) : 0;
+            
+            if (relSensorX > 0 && relSensorY > 0) {
+                // Convert to absolute coordinates
+                const absSensorX = relSensorX * imgWidth;
+                const absSensorY = relSensorY * imgHeight;
+                
+                currentSensorMarker = document.createElement('div');
+                currentSensorMarker.className = 'sensor-marker';
+                currentSensorMarker.style.left = (absSensorX - 10) + 'px';
+                currentSensorMarker.style.top = (absSensorY - 10) + 'px';
+                imageContainer.appendChild(currentSensorMarker);
+            }
+            
+            // Scroll para garantir que a área é visível (especialmente em dispositivos móveis)
+            if (isMobile) {
+                imageContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+    });
+    
+    // Ajuste inicial para elementos existentes
+    updateExistingAreas();
+})
+    </script>
+    {% endif %}
+    
+</body>
+</html>

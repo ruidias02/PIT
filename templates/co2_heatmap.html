@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa de Calor - CO2</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/heatmap.js/2.0.5/heatmap.min.js"></script>
+    <style>
+        .profile-container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .image-container {
+            position: relative;
+            margin-bottom: 20px;
+            overflow: hidden;
+            max-width: 100%;
+        }
+        .image-preview {
+            max-width: 100%;
+            max-height: 500px;
+            display: block;
+            margin: 0 auto;
+        }
+        #heatmapContainer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+        }
+        .sensor-marker {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #000;
+            border: 2px solid white;
+            transform: translate(-50%, -50%);
+            z-index: 20;
+        }
+        .sensor-radius {
+            position: absolute;
+            border-radius: 50%;
+            border: 1px dashed rgba(255, 255, 255, 0.8);
+            transform: translate(-50%, -50%);
+            z-index: 15;
+            pointer-events: none;
+            display: block;
+        }
+        .sensor-radius-inner {
+            border-color: rgba(255, 0, 0, 0.8);
+        }
+        .sensor-radius-middle {
+            border-color: rgba(255, 255, 0, 0.8);
+        }
+        .sensor-radius-outer {
+            border-color: rgba(0, 255, 0, 0.8);
+        }
+        .navbar {
+            margin-bottom: 30px;
+        }
+        .data-panel {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+        }
+        .legend {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+        .legend-gradient {
+            height: 20px;
+            width: 100%;
+            margin: 10px 0;
+            background: linear-gradient(to right, rgba(0, 255, 0, 0.7), rgba(255, 255, 0, 0.7), rgba(255, 0, 0, 0.7));
+            border-radius: 3px;
+        }
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .zone-circles {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            z-index: 12;
+            pointer-events: none;
+        }
+        #lastUpdate {
+            color: #6c757d;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .blink {
+            animation: blinker 1s linear;
+        }
+        @keyframes blinker {
+            50% {
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Sistema de deteção de incêndio</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('display_home_page') }}">Página inicial</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('area') }}">Áreas</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="profile-container">
+            
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5>Planta da casa</h5>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="image-container" id="imageContainer">
+                                <img src="{{ area.image_path }}" alt="Imagem do Usuário" class="image-preview" id="userImage">
+                                <div id="heatmapContainer"></div>
+                                <div class="zone-circles" id="zoneCircles"></div>
+                                
+                                <!-- Markers for all sensors - will be populated by JavaScript -->
+                                <div id="sensorMarkers"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="col-md-4">
+                            <div class="data-panel">
+                                <h5>Dados dos sistemas sensores</h5>
+                                <ul class="nav nav-tabs" id="sensorTabs" role="tablist">
+                                    <!-- Will be populated dynamically -->
+                                </ul>
+                                
+                                <div class="tab-content mt-3" id="sensorTabContent">
+                                    <!-- Will be populated dynamically -->
+                                </div>
+                            </div>
+                            
+                            <div class="legend">
+                                <h6>Legenda</h6>
+                                <div class="legend-gradient"></div>
+                                <div class="legend-labels">
+                                    <span>CO2 Baixo</span>
+                                    <span>CO2 Alto</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const image = document.getElementById('userImage');
+            const imageContainer = document.getElementById('imageContainer');
+            const heatmapContainer = document.getElementById('heatmapContainer');
+            const zoneCircles = document.getElementById('zoneCircles');
+            const sensorMarkers = document.getElementById('sensorMarkers');
+            const lastUpdateTime = document.getElementById('lastUpdateTime');
+            const updateStatus = document.getElementById('updateStatus');
+            const pathParts = window.location.pathname.split('/');
+            const areaId = pathParts[pathParts.length - 1];
+            
+            // Parameters for risk zones (in pixels - will need to scale based on the image)
+            const innerRadius = 30; // 0-5cm
+            const middleRadius = 60; // 5-10cm
+            const outerRadius = 90; // 10-15cm
+            
+            // Thresholds for CO2
+            const highThreshold = {{ high_threshold|default(1000) }};
+            const mediumThreshold = {{ medium_threshold|default(550) }};
+            
+            // Variable to store update interval
+            let updateInterval = setInterval(updateSensorData, 1000);
+            
+            // Initial sensors data
+            let sensorsData = {{ sensors|tojson }};
+            
+            // Function to create sensor markers
+            function createSensorMarkers() {
+                sensorMarkers.innerHTML = '';
+                
+                // Get image dimensions for relative positioning
+                const imgWidth = image.clientWidth;
+                const imgHeight = image.clientHeight;
+                
+                sensorsData.forEach(sensor => {
+                    const marker = document.createElement('div');
+                    marker.className = 'sensor-marker';
+                    marker.id = `marker-${sensor.id}`;
+                    marker.dataset.sensorId = sensor.id;
+                    marker.dataset.co2 = sensor.co2;
+                    
+                    // Check if sensor coordinates are relative (between 0 and 1) or absolute
+                    let posX, posY;
+                    
+                    // If coordinates are relative (between 0 and 1)
+                    if (sensor.x <= 1 && sensor.y <= 1) {
+                        posX = sensor.x * imgWidth;
+                        posY = sensor.y * imgHeight;
+                    } else {
+                        // Assume they're already absolute pixel values
+                        posX = sensor.x;
+                        posY = sensor.y;
+                    }
+                    
+                    // Position the marker (account for the marker's own size)
+                    marker.style.left = `${posX}px`;
+                    marker.style.top = `${posY}px`;
+                    marker.title = `Sensor ${sensor.id} - CO2: ${sensor.co2.toFixed(1)}ppm`;
+                    
+                    sensorMarkers.appendChild(marker);
+                });
+            }
+            
+            // Function to create sensor tabs
+            function createSensorTabs() {
+                const sensorTabs = document.getElementById('sensorTabs');
+                const sensorTabContent = document.getElementById('sensorTabContent');
+                
+                // Armazenar o id da aba ativa antes de limpar
+                let activeTabId = null;
+                const activeTab = document.querySelector('#sensorTabs .nav-link.active');
+                if (activeTab) {
+                    activeTabId = activeTab.id.replace('-tab', '');
+                }
+                
+                sensorTabs.innerHTML = '';
+                sensorTabContent.innerHTML = '';
+                
+                sensorsData.forEach((sensor, index) => {
+                    const sensorTabId = `sensor-${sensor.id}`;
+                    const isActive = activeTabId ? (sensorTabId === activeTabId) : (index === 0);
+                    
+                    // Create tab
+                    const tabItem = document.createElement('li');
+                    tabItem.className = 'nav-item';
+                    tabItem.role = 'presentation';
+                    
+                    const tabButton = document.createElement('button');
+                    tabButton.className = `nav-link ${isActive ? 'active' : ''}`;
+                    tabButton.id = `${sensorTabId}-tab`;
+                    tabButton.dataset.bsToggle = 'tab';
+                    tabButton.dataset.bsTarget = `#${sensorTabId}`;
+                    tabButton.type = 'button';
+                    tabButton.role = 'tab';
+                    tabButton.textContent = `A${sensor.id}`;
+                    
+                    tabItem.appendChild(tabButton);
+                    sensorTabs.appendChild(tabItem);
+                    
+                    // Create tab content
+                    const tabPane = document.createElement('div');
+                    tabPane.className = `tab-pane fade ${isActive ? 'show active' : ''}`;
+                    tabPane.id = sensorTabId;
+                    tabPane.role = 'tabpanel';
+                    
+                    const co2Class = sensor.co2 >= highThreshold ? 'bg-danger' : 
+                                   (sensor.co2 >= mediumThreshold ? 'bg-warning text-dark' : 'bg-success');
+                    
+                    tabPane.innerHTML = `
+                        <table class="table table-sm">
+                            <tr>
+                                <th>CO2:</th>
+                                <td>${sensor.co2.toFixed(1)}ppm <span class="badge ${co2Class}">${
+                                    sensor.co2 >= highThreshold ? 'Alto' : 
+                                    (sensor.co2 >= mediumThreshold ? 'Médio' : 'Baixo')
+                                }</span></td>
+                            </tr>
+                            <tr>
+                                <th>Temperatura:</th>
+                                <td>${sensor.temperature ? sensor.temperature.toFixed(1) : 'N/A'}°C</td>
+                            </tr>
+                            <tr>
+                                <th>Humidade:</th>
+                                <td>${sensor.humidity ? sensor.humidity.toFixed(1) : 'N/A'}%</td>
+                            </tr>
+                            <tr>
+                                <th>Luminosidade:</th>
+                                <td>${sensor.lum ? sensor.lum.toFixed(1) : 'N/A'}</td>
+                            </tr>
+                            <tr>
+                        </table>
+                    `;
+                    
+                    sensorTabContent.appendChild(tabPane);
+                });
+            }
+            
+            // Function to get CO2 level based on threshold
+            function getCo2Level(co2Value) {
+                if (co2Value >= highThreshold) {
+                    return 'high';
+                } else if (co2Value >= mediumThreshold) {
+                    return 'medium';
+                } else {
+                    return 'low';
+                }
+            }
+            
+            // Function to create zone circles
+            function createZoneCircles() {
+                zoneCircles.innerHTML = '';
+                
+                const circles = [];
+                const imgWidth = image.clientWidth;
+                const imgHeight = image.clientHeight;
+                
+                sensorsData.forEach(sensor => {
+                    const co2Level = getCo2Level(sensor.co2);
+                    
+                    // Calculate position (account for relative coordinates)
+                    let posX, posY;
+                    
+                    // If coordinates are relative (between 0 and 1)
+                    if (sensor.x <= 1 && sensor.y <= 1) {
+                        posX = sensor.x * imgWidth;
+                        posY = sensor.y * imgHeight;
+                    } else {
+                        // Assume they're already absolute pixel values
+                        posX = sensor.x;
+                        posY = sensor.y;
+                    }
+                    
+                    // Outer zone (10-15cm)
+                    const outerCircle = document.createElement('div');
+                    outerCircle.className = 'sensor-radius';
+                    outerCircle.style.left = posX + 'px';
+                    outerCircle.style.top = posY + 'px';
+                    outerCircle.style.width = outerRadius * 2 + 'px';
+                    outerCircle.style.height = outerRadius * 2 + 'px';
+                    outerCircle.style.backgroundColor = co2Level === 'high' ? 
+                        'rgba(255, 0, 0, 0.3)' : 'rgba(0, 255, 0, 0.3)';
+                    outerCircle.dataset.sensorId = sensor.id;
+                    circles.push(outerCircle);
+                    
+                    // Middle zone (5-10cm)
+                    const middleCircle = document.createElement('div');
+                    middleCircle.className = 'sensor-radius';
+                    middleCircle.style.left = posX + 'px';
+                    middleCircle.style.top = posY + 'px';
+                    middleCircle.style.width = middleRadius * 2 + 'px';
+                    middleCircle.style.height = middleRadius * 2 + 'px';
+                    middleCircle.style.backgroundColor = co2Level === 'high' ? 
+                        'rgba(255, 165, 0, 0.4)' : 'rgba(255, 255, 0, 0.4)';
+                    middleCircle.dataset.sensorId = sensor.id;
+                    circles.push(middleCircle);
+                    
+                    // Inner zone (0-5cm)
+                    const innerCircle = document.createElement('div');
+                    innerCircle.className = 'sensor-radius';
+                    innerCircle.style.left = posX + 'px';
+                    innerCircle.style.top = posY + 'px';
+                    innerCircle.style.width = innerRadius * 2 + 'px';
+                    innerCircle.style.height = innerRadius * 2 + 'px';
+                    
+                    // Use green for low CO2, yellow for medium, red for high
+                    if (co2Level === 'high') {
+                        innerCircle.style.backgroundColor = 'rgba(255, 0, 0, 0.6)'; // Red for high CO2
+                    } else if (co2Level === 'medium') {
+                        innerCircle.style.backgroundColor = 'rgba(255, 255, 0, 0.6)'; // Yellow for medium CO2
+                    } else {
+                        innerCircle.style.backgroundColor = 'rgba(0, 255, 0, 0.6)'; // Green for low CO2
+                    }
+                    
+                    innerCircle.dataset.sensorId = sensor.id;
+                    circles.push(innerCircle);
+                });
+                
+                // Sort circles by radius (largest first)
+                circles.sort((a, b) => {
+                    const aWidth = parseInt(a.style.width);
+                    const bWidth = parseInt(b.style.width);
+                    return bWidth - aWidth;
+                });
+                
+                circles.forEach(circle => zoneCircles.appendChild(circle));
+            }
+            
+            // Initialize the heatmap
+            function initializeHeatmap() {
+                const width = image.clientWidth;
+                const height = image.clientHeight;
+                
+                // Reset the heatmap container
+                heatmapContainer.innerHTML = '';
+                heatmapContainer.style.width = width + 'px';
+                heatmapContainer.style.height = height + 'px';
+                
+                const heatmapInstance = h337.create({
+                    container: heatmapContainer,
+                    radius: outerRadius,
+                    maxOpacity: 0.5,
+                    minOpacity: 0.1,
+                    blur: 0.85,
+                    gradient: {
+                        0.2: 'rgb(0, 255, 0)',
+                        0.5: 'rgb(255, 255, 0)',
+                        0.8: 'rgb(255, 0, 0)'
+                    }
+                });
+                
+                // Map sensor data to heatmap points
+                const sensorPoints = sensorsData.map(sensor => {
+                    // Calculate position (account for relative coordinates)
+                    let posX, posY;
+                    
+                    // If coordinates are relative (between 0 and 1)
+                    if (sensor.x <= 1 && sensor.y <= 1) {
+                        posX = sensor.x * width;
+                        posY = sensor.y * height;
+                    } else {
+                        // Assume they're already absolute pixel values
+                        posX = sensor.x;
+                        posY = sensor.y;
+                    }
+                    
+                    return {
+                        x: Math.round(posX),
+                        y: Math.round(posY),
+                        value: sensor.co2
+                    };
+                });
+                
+                // Generate points with blend for overlapping areas
+                const points = generateBlendedHeatmapPoints(sensorPoints, width, height);
+                
+                // Define the data in the heatmap
+                heatmapInstance.setData({
+                    max: 1500,
+                    min: 300,
+                    data: points
+                });
+                
+                return heatmapInstance;
+            }
+            
+            // Function to generate points with blending for overlapping areas
+            function generateBlendedHeatmapPoints(sensorPoints, width, height) {
+                const points = [];
+                const gridSize = 10;
+                
+                // Adicione os pontos de sensor diretamente
+                points.push(...sensorPoints);
+                
+                for (let x = 0; x < width; x += gridSize) {
+                    for (let y = 0; y < height; y += gridSize) {
+                        let weightedValue = 0;
+                        let totalWeight = 0;
+                        let influencingSensors = 0;
+                        
+                        for (const sensor of sensorPoints) {
+                            const distance = Math.sqrt(
+                                Math.pow(x - sensor.x, 2) + 
+                                Math.pow(y - sensor.y, 2)
+                            );
+                            
+                            // IMPORTANTE: Não considerar pontos fora do raio de influência
+                            if (distance > outerRadius) continue;
+                            
+                            influencingSensors++;
+                            
+                            let weight;
+                            if (distance <= innerRadius) {
+                                weight = 3 / Math.max(1, distance);
+                            } else if (distance <= middleRadius) {
+                                weight = 2 / Math.max(1, distance);
+                            } else {
+                                weight = 1 / Math.max(1, distance);
+                            }
+                            
+                            weightedValue += sensor.value * weight;
+                            totalWeight += weight;
+                        }
+                        
+                        // IMPORTANTE: Só adicionar pontos que estão dentro da influência de algum sensor
+                        if (influencingSensors > 0 && totalWeight > 0) {
+                            const blendedValue = weightedValue / totalWeight;
+                            
+                            points.push({
+                                x: x,
+                                y: y,
+                                value: blendedValue
+                            });
+                        }
+                    }
+                }
+                
+                return points;
+            }
+            
+            // Function to update data from server
+            function updateSensorData() {
+    // Show update indicator
+    if (updateStatus) {
+        updateStatus.classList.add('blink');
+        updateStatus.textContent = 'Atualizando...';
+    }
+    
+    console.log(`[${new Date().toLocaleTimeString()}] Enviando solicitação para /api/sensor_co2_data/${areaId}`);
+    
+    // AJAX request to get updated data
+    fetch(`/api/sensor_co2_data/${areaId}`, {
+        method: 'GET',
+        headers: {
+            'Cache-Control': 'no-cache',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        console.log(`[${new Date().toLocaleTimeString()}] Resposta recebida:`, response.status);
+        if (!response.ok) {
+            throw new Error(`Erro na resposta do servidor: ${response.status}`);
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log(`[${new Date().toLocaleTimeString()}] Dados recebidos:`, data);
+        
+        // Verificar se os dados são válidos
+        if (!Array.isArray(data) || data.length === 0) {
+            console.warn("Dados recebidos não são um array ou estão vazios");
+            return;
+        }
+        
+        // Update sensors data
+        sensorsData = data;
+        
+        // Update UI components
+        console.log("Atualizando marcadores de sensores");
+        createSensorMarkers();
+        
+        console.log("Atualizando abas de sensores");
+        createSensorTabs();
+        
+        console.log("Atualizando círculos de zona");
+        createZoneCircles();
+        
+        // Remover o heatmap antigo e criar um novo
+        console.log("Recriando heatmap");
+        if (heatmapContainer) {
+            heatmapContainer.innerHTML = '';
+        }
+        
+        // Recreate heatmap with new data
+        heatmapInstance = initializeHeatmap();
+        
+        // Update timestamp
+        if (lastUpdateTime) {
+            const now = new Date();
+            lastUpdateTime.textContent = now.toLocaleTimeString();
+        }
+        
+        // Update status
+        if (updateStatus) {
+            updateStatus.classList.remove('blink');
+            updateStatus.className = 'badge bg-success';
+            updateStatus.textContent = 'Atualizado';
+        }
+        
+        console.log(`[${new Date().toLocaleTimeString()}] Atualização completa`);
+    })
+    .catch(error => {
+        console.error(`[${new Date().toLocaleTimeString()}] Erro ao buscar dados:`, error);
+        if (updateStatus) {
+            updateStatus.classList.remove('blink');
+            updateStatus.className = 'badge bg-danger';
+            updateStatus.textContent = 'Erro';
+        }
+    });
+}
+            
+            // Initialize visualizations when image is loaded
+            let heatmapInstance;
+            
+            function initialize() {
+                // Create sensor markers
+                createSensorMarkers();
+                
+                // Create sensor tabs
+                createSensorTabs();
+                
+                // Create zone circles
+                createZoneCircles();
+                
+                // Initialize heatmap
+                heatmapInstance = initializeHeatmap();
+                
+                // Start update interval
+                updateInterval = setInterval(updateSensorData, 1000);
+            }
+            
+            // Initialize when image is loaded
+            if (image.complete) {
+                initialize();
+            } else {
+                image.onload = initialize;
+            }
+            
+            // Clean up on page unload
+            window.addEventListener('beforeunload', function() {
+                clearInterval(updateInterval);
+            });
+        });
+    </script>
+</body>
+</html>
