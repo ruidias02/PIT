@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eventos dos Sensores</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            padding: 0; /* Removido o padding do body */
+            background-color: #f5f5f5;
+            font-family: sans-serif;
+            font-size: 1rem;
+            margin: 0;
+        }
+        .table-header th {
+            background-color: #4CAF50 !important;
+            color: white !important;
+        }
+        .event-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            color: black;
+            font-weight: bold;
+            font-size: 0.9rem;
+            background-color: transparent;
+        }
+        .event-container {
+            background-color: transparent;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 0;
+            margin-bottom: 20px;
+        }
+        .event-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .event-table th, .event-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+            font-size: 0.9rem;
+            background-color: transparent;
+        }
+        .event-table thead th {
+            font-size: 0.9rem;
+        }
+        .event-table tr:hover {
+            background-color: #f5f5f5;
+        }
+        .navbar {
+            margin-bottom: 20px;
+            margin-top: 0; /* Adicionado para garantir que não haja margem no topo */
+        }
+        .refresh-button {
+            margin-bottom: 15px;
+        }
+        .back-button {
+            background-color: #f4f4f4;
+            color: #333;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-top: 20px;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 200px;
+        }
+        .back-button:hover {
+            opacity: 0.8;
+        }
+        h3 {
+            background-color: transparent;
+            padding: 0;
+            margin-bottom: 5px;
+        }
+        /* Media query simplificado */
+        @media (min-width: 768px) {
+            .navbar {
+                margin-bottom: 30px;
+            }
+        }
+        /* Adicionado para garantir que o container do conteúdo tenha o padding adequado */
+        .container.mt-5 {
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">Sistema de deteção de incêndio</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('display_home_page') }}">Página inicial</a>
+                    </li>   
+                    {% if session.get('permissao') == 'admin' %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_dashboard') }}">Admin</a>
+                    </li>
+                    {% endif %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-12">
+                <h1 class="mb-4">Eventos dos sistemas sensor</h1>
+                <div id="event-tables-container"></div>
+                <div class="d-flex justify-content-start">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Translation for alert types (matching error translations)
+        const alertTranslations = {
+            'temperature': 'Temperatura',
+            'humidity': 'Humidade',
+            'CO2': 'CO2',
+            'luminosity': 'Luminosidade',
+            'medium': 'Risco Médio',
+            'high': 'Risco Alto',
+            null: 'Desconhecido'
+        };
+
+        // Get event badge class based on alert type (matching error badge logic)
+        function getAlertBadgeClass(alertType) {
+            switch(alertType) {
+                case 'temperature': return 'event-temperature';
+                case 'humidity': return 'event-humidity';
+                case 'CO2': return 'event-co2';
+                case 'luminosity': return 'event-luminosity';
+                case 'medium': return 'event-medium';
+                case 'high': return 'event-high';
+                default: return 'event-unknown';
+            }
+        }
+
+        function updateEventTables() {
+            fetch('/eventos-data')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('event-tables-container');
+                    container.innerHTML = '';
+
+                    const eventosPorSensor = {};
+                    data.forEach(evento => {
+                        if (!eventosPorSensor[evento.id_sensor]) {
+                            eventosPorSensor[evento.id_sensor] = [];
+                        }
+                        eventosPorSensor[evento.id_sensor].push(evento);
+                    });
+
+                    Object.keys(eventosPorSensor).forEach(sensorId => {
+                        const eventos = eventosPorSensor[sensorId];
+
+                        let tableHTML = ''; // Inicializa como string vazia
+
+                        if (eventos.length > 0) { // Verifica se há eventos para o sensor
+                            tableHTML = `
+                                <div class="event-container">
+                                    <h3>Sistema sensor ID: ${sensorId}</h3>
+                                    <div class="table-responsive">
+                                        <table class="event-table table-bordered">
+                                            <thead>
+                                                <tr class="table-header">
+                                                    <th>ID</th>
+                                                    <th>Tempo</th>
+                                                    <th>Tipo de evento</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${eventos.map(evento => {
+                                                    const alertType = evento.tipo_alerta || null;
+                                                    const alertTranslation = alertTranslations[alertType] || 'Desconhecido';
+                                                    const badgeClass = getAlertBadgeClass(alertType);
+                                                    return `
+                                                        <tr>
+                                                            <td>${evento.id_evento_sensor}</td>
+                                                            <td>${evento.evento_sensor_timestamp}</td>
+                                                            <td><span class="event-badge ${badgeClass}">${alertTranslation}</span></td>
+                                                        </tr>
+                                                    `;
+                                                }).join('')}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            `;
+                        }
+                        container.innerHTML += tableHTML;
+                    });
+                })
+                .catch(error => {
+                    console.error('Erro ao buscar dados:', error);
+                    const container = document.getElementById('event-tables-container');
+                    container.innerHTML = '<div class="alert alert-danger">Erro ao carregar dados. Tente novamente mais tarde.</div>';
+                });
+        }
+
+        document.addEventListener('DOMContentLoaded', updateEventTables);
+        setInterval(updateEventTables, 1000);
+    </script>
+</body>
+</html>
